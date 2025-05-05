@@ -13,6 +13,19 @@ redis-macros = "0.5.2"
 redis = { version = "0.30", features = ["tokio-comp"]}
 uuid = { version = "1.16", features = ["v4", "v7","serde"]}
 futures-util = "0.3.31"
+chrono = "0.4.41"
+
+[dependencies.sqlx]
+version = "0.8.5"
+features = [
+    "tls-rustls",
+    "runtime-tokio",
+    "postgres",
+    "chrono",
+    "macros",
+    "derive",
+    "uuid",
+]
 
 [[bin]]
 name = "app"
