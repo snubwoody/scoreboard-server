@@ -1,6 +1,5 @@
 pub mod db;
 mod error;
-mod state;
 use axum::{
     Router,
     extract::{
@@ -10,21 +9,36 @@ use axum::{
     response::Response,
     routing::any,
 };
-use db::{DbClient, User};
-pub use error::{Error, Result};
-use redis::AsyncCommands;
+use db::{DbClient, ScoreBoard};
+pub use error::{Error, Result,ClientError,ClientErrorKind};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
+
+/// All the message types that can be sent over the web socket
+/// connection
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
-enum ClientMessage {
+#[serde(tag="method",content="body")]
+#[serde(rename_all = "camelCase",rename_all_fields="camelCase")]
+pub enum ClientMessage {
     AddMember { name: String },
     DeleteMember { name: String },
     UpdateScore { name: String, score: u64 },
+    CreateScoreBoard,
+    GetScoreBoard{ id: Uuid },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct ClientResponse {}
+#[serde(tag="method",content="body")]
+#[serde(rename_all = "camelCase",rename_all_fields="camelCase")]
+pub enum ClientResponse {
+    CreateScoreBoard{
+        id: Uuid
+    },
+    GetScoreBoard{
+        scoreboard: ScoreBoard
+    },
+}
 
 async fn handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> Response {
     ws.on_upgrade(async |socket| {
@@ -37,31 +51,62 @@ async fn handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> Respons
 
 async fn handle_socket(mut socket: WebSocket, mut state: AppState) -> crate::Result<()> {
     while let Some(msg) = socket.recv().await {
-        match msg.unwrap() {
-            Message::Text(text) => match serde_json::from_str::<ClientMessage>(&text) {
-                Ok(message) => {
-                    let user = User::new();
-                    let id = user.id();
-                    state.client().set_user(user).await?;
+        if let Message::Text(text) = msg? {
+            match serde_json::from_str::<ClientMessage>(&text) {
+                Ok(message) => {   
+                    let response = handle_message(message, &mut state).await?;
+                    let message = serde_json::to_string(&response)?;
 
-                    let user = state.client().get_user(&id).await?;
-                    let msg = serde_json::to_string(&user)?;
-                    socket.send(Message::text(msg)).await.unwrap();
+                    socket.send(Message::Text(message.into())).await?;
                 }
-                Err(_) => {
-                    dbg!("Invalid message");
+                Err(err) => {
+                    dbg!(err);
                 }
-            },
-            Message::Close(_) => {}
-            _ => {}
+            }
         }
     }
 
     Ok(())
 }
 
+pub async fn handle_message(
+    message: ClientMessage,
+    state: &mut AppState
+) -> Result<ClientResponse>{
+    let redis = state.client();
+
+    match message {
+        ClientMessage::CreateScoreBoard =>{
+            let board = ScoreBoard::new();
+            let id = board.id();
+
+            redis.set_scoreboard(board).await?;
+            let response = ClientResponse::CreateScoreBoard { id };
+            
+            Ok(response)
+        },
+        ClientMessage::GetScoreBoard { id } =>{
+            match redis.get_scoreboard(&id).await? {
+                Some(scoreboard) => {
+                    let response = ClientResponse::GetScoreBoard { scoreboard };
+                    Ok(response)
+                }
+                None => {
+                    let error = ClientError::not_found("Scoreboard not found");
+                    Err(error.into())
+                }
+            }
+
+        }
+        _ => {
+
+            Err(Error::UnsupportedMethod)
+        }
+    }
+}
+
 #[derive(Clone)]
-struct AppState {
+pub struct AppState {
     client: DbClient,
 }
 
@@ -80,17 +125,9 @@ impl AppState {
 
 pub async fn router() -> crate::Result<()> {
     let state = AppState::new().await?;
-
     let app = Router::new().route("/ws", any(handler)).with_state(state);
 
     let listener = tokio::net::TcpListener::bind("[::1]:5000").await.unwrap();
-    let client = redis::Client::open("redis://[::1]:6379").unwrap();
-
-    let mut conn = client.get_multiplexed_async_connection().await.unwrap();
-    let _: () = conn.set("user:5000", "hello").await.unwrap();
-
-    let response: String = conn.get("user:5000").await.unwrap();
-    dbg!(response);
 
     println!("Listening on port 5000");
     axum::serve(listener, app).await.unwrap();
