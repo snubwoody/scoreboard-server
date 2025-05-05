@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(FromRedisValue,ToRedisArgs)]
 pub struct ScoreBoard {
     id: Uuid,
     users: Vec<User>,
@@ -14,6 +15,10 @@ impl ScoreBoard {
         let id = Uuid::new_v4();
 
         Self { id, users: vec![] }
+    }
+
+    pub fn id(&self) -> Uuid{
+        self.id
     }
 }
 
@@ -82,6 +87,31 @@ impl DbClient {
 
         Ok(Self { connection })
     }
+    // TODO make generic get and set methods
+
+    pub async fn set_scoreboard(&mut self,scoreboard: ScoreBoard) -> crate::Result<()> {
+        let _: () = self
+            .connection
+            .set(format!("scoreboard:{}", scoreboard.id), scoreboard)
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn get_scoreboard(&mut self,id: &Uuid) -> crate::Result<Option<ScoreBoard>> {
+        let response: Result<ScoreBoard, redis::RedisError> = self
+            .connection
+            .get(format!("scoreboard:{}", id))
+            .await;
+
+        match response {
+            Ok(board) => Ok(Some(board)),
+            Err(error) => match error.kind() {
+                redis::ErrorKind::TypeError => Ok(None),
+                _ => Err(error.into()),
+            },
+        }
+    }
 
     pub async fn set_user(&mut self, user: User) -> crate::Result<()> {
         let _: () = self
@@ -118,6 +148,19 @@ mod tests {
 
         let user = client.get_user(&id).await?.unwrap();
         assert_eq!(user.id, id);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_set_scoreboard() -> crate::Result<()> {
+        let mut client = DbClient::new().await?;
+        let scoreboard = ScoreBoard::new();
+        let id = scoreboard.id;
+        client.set_scoreboard(scoreboard).await?;
+
+        let scoreboard = client.get_scoreboard(&id).await?.unwrap();
+        assert_eq!(scoreboard.id, id);
 
         Ok(())
     }
