@@ -12,7 +12,7 @@ pub struct User{
     pub user_name: Option<String>
 }
 
-#[derive(Debug,Serialize,Deserialize,FromRow)]
+#[derive(Debug,Serialize,Deserialize,FromRow,PartialEq, Eq,Clone)]
 pub struct RefreshToken{
     pub id: Uuid,
     pub token: String,
@@ -44,22 +44,41 @@ pub fn create_token() -> String{
 
 /// Create a session token and insert it 
 /// into the database.
-pub async fn create_session_token(pool: &PgPool) -> crate::Result<SessionToken>{
+pub async fn create_session_token(
+    user_id: Uuid,
+    pool: &PgPool
+) -> crate::Result<SessionToken>{
     let session_token = create_token();
     let expiry = Utc::now() + time::Duration::from_secs(60 * 30);
     
     let token = 
         sqlx::query_as::<_,SessionToken>(
-            "INSERT INTO session_tokens(token,expires_at) VALUES($1,$2) RETURNING *"
+            "INSERT INTO session_tokens(token,expires_at,user_id) VALUES($1,$2,$3) RETURNING *"
         )
         .bind(session_token)
         .bind(expiry)
+        .bind(user_id)
         .fetch_one(pool)
         .await?;
     Ok(token)
 }
 
-pub async fn create_refresh_token(){
+pub async fn create_refresh_token(session_id: Uuid,pool: &PgPool) -> crate::Result<RefreshToken>{
+    let token = create_token();
+    
+    let refresh_token = 
+        sqlx::query_as::<_,RefreshToken>(
+            "INSERT INTO refresh_tokens(token,session_id,active) 
+            VALUES($1,$2,true) 
+            RETURNING *
+            "
+        )
+        .bind(token)
+        .bind(session_id)
+        .fetch_one(pool)
+        .await?;
+
+    Ok(refresh_token)
 
 }
 
@@ -74,48 +93,16 @@ pub async fn refresh_tokens(){
 
 /// Create a user in the database
 pub async fn create_user(pool: &PgPool,desc: UserDesc) -> crate::Result<User>{
-    let instant = tokio::time::Instant::now();
     let user = sqlx::query_as::<_,User>(
         "INSERT INTO users(id) VALUES($1) RETURNING *",
     )
     .bind(desc.id)
     .fetch_one(pool).await?;
 
-    let session_token = create_token();
-    let refresh_token = create_token();
-    let expiry = Utc::now() + time::Duration::from_secs(60 * 30);
-    
-    let session = 
-        sqlx::query_as::<_,SessionToken>(
-            "INSERT INTO session_tokens(token,expires_at) VALUES($1,$2) RETURNING *"
-        )
-        .bind(session_token)
-        .bind(expiry)
-        .fetch_one(pool)
-        .await?;
-
-    let refresh_token = 
-        sqlx::query_as::<_,RefreshToken>(
-            "
-            INSERT INTO refresh_tokens(token,session_id,active) 
-            VALUES($1,$2,true) 
-            RETURNING *
-            "
-        )
-        .bind(refresh_token)
-        .bind(session.id)
-        .fetch_one(pool)
-        .await?;
-
-    dbg!(session);
-    dbg!(refresh_token);
-
-    dbg!(instant.elapsed());
-    
     Ok(user)
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug,Clone,Default)]
 pub struct UserDesc{
     id: Uuid,
     email: Option<String>,
@@ -146,9 +133,10 @@ impl UserDesc{
 mod tests{
     use super::*;
 
-    #[sqlx::test]
+    #[sqlx::test(migrations="./migrations")]
     async fn new_session_token(pool: PgPool) -> crate::Result<()>{
-        let token = create_session_token(&pool).await?;
+        let user = create_user(&pool,Default::default()).await?;
+        let token = create_session_token(user.id,&pool).await?;
         
         let session_token = sqlx::query_as::<_,SessionToken>(
             "SELECT * FROM session_tokens WHERE id = $1"
@@ -161,6 +149,23 @@ mod tests{
 
         assert_eq!(token,session_token);
         assert!(session_token.expires_at <= max_expiry);
+        Ok(())
+    }
+
+    #[sqlx::test(migrations="./migrations")]
+    async fn new_refresh_token(pool: PgPool) -> crate::Result<()>{
+        let user = create_user(&pool,Default::default()).await?;
+        let session_token = create_session_token(user.id,&pool).await?;
+        let refresh_token = create_refresh_token(session_token.id,&pool).await?;
+        
+        let token = sqlx::query_as::<_,RefreshToken>(
+            "SELECT * FROM refresh_tokens WHERE id = $1"
+        )
+        .bind(refresh_token.id)
+        .fetch_one(&pool)
+        .await?;
+
+        assert_eq!(token,refresh_token);
         Ok(())
     }
 
