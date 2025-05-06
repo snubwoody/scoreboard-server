@@ -18,6 +18,8 @@ pub enum Error {
     SerdeJsonError(#[from] serde_json::Error),
     #[error(transparent)]
     AxumJsonError(#[from] axum::Error),
+    #[error(transparent)]
+    SqlxError(#[from] sqlx::Error),
 }
 
 #[derive(Debug,Serialize,Deserialize)]

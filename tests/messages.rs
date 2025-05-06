@@ -1,8 +1,9 @@
 use scoreboard::{handle_message, AppState, ClientErrorKind, ClientMessage, ClientResponse};
+use sqlx::PgPool;
 use uuid::Uuid;
 
-#[tokio::test]
-async fn create_scoreboard() -> scoreboard::Result<()>{
+#[sqlx::test]
+async fn create_scoreboard(pool: PgPool) -> scoreboard::Result<()>{
     let mut state = AppState::new().await?;
     let message = ClientMessage::CreateScoreBoard;
     let response = handle_message(message, &mut state).await?;

@@ -1,17 +1,17 @@
 pub mod db;
 mod error;
+mod auth;
+mod api;
+use std::env;
 use axum::{
-    Router,
     extract::{
-        State, WebSocketUpgrade,
-        ws::{Message, WebSocket},
-    },
-    response::Response,
-    routing::any,
+        ws::{Message, WebSocket}, State, WebSocketUpgrade
+    }, response::Response, routing::{any, get, post}, Router
 };
 use db::{DbClient, ScoreBoard};
 pub use error::{Error, Result,ClientError,ClientErrorKind};
 use serde::{Deserialize, Serialize};
+use sqlx::{postgres::PgPoolOptions, PgPool};
 use uuid::Uuid;
 
 
@@ -108,24 +108,56 @@ pub async fn handle_message(
 #[derive(Clone)]
 pub struct AppState {
     client: DbClient,
+    pool: PgPool
 }
 
 impl AppState {
     pub async fn new() -> crate::Result<Self> {
         let client = DbClient::new().await?;
+        let database_url = env::var("DATABASE_URL").unwrap();
+        let pool = PgPoolOptions::new()
+            .max_connections(15)
+            .connect(&database_url)
+            .await?;
 
-        Ok(Self { client })
+        Ok(Self { client,pool })
     }
 
-    /// Get a reference to the connection
+    pub async fn with_pool(pool: PgPool) -> crate::Result<Self> {
+        let client = DbClient::new().await?;
+
+        Ok(Self { client,pool })
+    }
+
+    /// Get a reference to the client
     pub fn client(&mut self) -> &mut DbClient {
         &mut self.client
     }
+
+    /// Get a reference to the database pool
+    pub fn pool(&self) -> &PgPool {
+        &self.pool
+    }
 }
 
-pub async fn router() -> crate::Result<()> {
+
+pub fn router(state: AppState) -> Router{
+    let api = Router::new()
+    .route("/auth/sign-up", post(api::sign_up))
+    .route("/auth/sign-in", post(api::sign_in))
+    .route("/auth/log-out", get(api::log_out));
+
+    Router::new()
+        .route("/ws", any(handler))
+        .nest("/api/v1", api)
+        .with_state(state)
+}
+
+
+
+pub async fn main() -> crate::Result<()> {
     let state = AppState::new().await?;
-    let app = Router::new().route("/ws", any(handler)).with_state(state);
+    let app = router(state);
 
     let listener = tokio::net::TcpListener::bind("[::1]:5000").await.unwrap();
 

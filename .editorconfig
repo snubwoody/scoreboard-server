@@ -1,5 +1,6 @@
 [*]
 indent_style = space
+end_of_line = lf
 
 [*.rs]
 indent_size = 4
