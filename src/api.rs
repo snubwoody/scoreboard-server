@@ -1,12 +1,14 @@
 use crate::{
-    auth::{self, User}, board::{self, Leaderboard}, AppState
+    AppState,
+    auth::{self, User},
+    board::{self, Leaderboard},
 };
 use axum::{Json, extract::State, http::StatusCode};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug,Serialize,Deserialize,Default)]
-pub struct CreateBoardPayload{
-    pub name: String
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct CreateBoardPayload {
+    pub name: String,
 }
 
 /// Sign up as an anonymous user
@@ -23,10 +25,10 @@ pub async fn anon_sign_up(
 pub async fn create_board(
     State(state): State<AppState>,
     Json(payload): Json<CreateBoardPayload>,
-) -> crate::Result<(StatusCode,Json<Leaderboard>)> {
+) -> crate::Result<(StatusCode, Json<Leaderboard>)> {
     let board = board::Leaderboard::new(&payload.name, state.pool()).await?;
 
-    Ok((StatusCode::CREATED,Json(board)))
+    Ok((StatusCode::CREATED, Json(board)))
 }
 
 /// Get all leaderboards

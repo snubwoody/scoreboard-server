@@ -4,8 +4,8 @@ use axum::{
 };
 use scoreboard::{AppState, auth::User, router};
 use sqlx::PgPool;
-use tokio_tungstenite::connect_async;
 use std::usize;
+use tokio_tungstenite::connect_async;
 use tower::ServiceExt;
 
 #[sqlx::test]

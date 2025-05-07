@@ -1,26 +1,30 @@
-mod error;
 pub mod api;
 pub mod auth;
 pub mod board;
-pub mod ws;
 pub mod db;
+mod error;
+pub mod ws;
 use axum::{
+    Router,
     extract::{
-        ws::{Message, WebSocket}, State, WebSocketUpgrade
-    }, response::Response, routing::{any, get, post}, Router
+        State, WebSocketUpgrade,
+        ws::{Message, WebSocket},
+    },
+    response::Response,
+    routing::{any, get, post},
 };
 use db::{DbClient, ScoreBoard};
 pub use error::{ClientError, ClientErrorKind, Error, Result};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, postgres::PgPoolOptions};
-use ws::ConnectionGroup;
 use std::env;
 use uuid::Uuid;
+use ws::ConnectionGroup;
 
 /// All the message types that can be sent over the web socket
 /// connection
-#[derive(Debug, Serialize, Deserialize,Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "method", content = "body")]
 #[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum ClientMessage {
@@ -31,7 +35,7 @@ pub enum ClientMessage {
     GetScoreBoard { id: Uuid },
 }
 
-#[derive(Debug, Serialize, Deserialize,Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "method", content = "body")]
 #[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum ClientResponse {
@@ -115,22 +119,20 @@ impl AppState {
             .connect(&database_url)
             .await?;
 
-
-
-        Ok(Self { 
-            client, 
+        Ok(Self {
+            client,
             pool,
-            connections: ConnectionGroup::new() 
+            connections: ConnectionGroup::new(),
         })
     }
 
     pub async fn with_pool(pool: PgPool) -> crate::Result<Self> {
         let client = DbClient::new().await?;
 
-        Ok(Self { 
-            client, 
+        Ok(Self {
+            client,
             pool,
-            connections: ConnectionGroup::new() 
+            connections: ConnectionGroup::new(),
         })
     }
 

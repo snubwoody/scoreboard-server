@@ -28,7 +28,6 @@ pub enum Error {
     TungsteniteError(#[from] tokio_tungstenite::tungstenite::Error),
 }
 
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClientError {
     kind: ClientErrorKind,

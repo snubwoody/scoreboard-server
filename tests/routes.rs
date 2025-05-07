@@ -2,69 +2,71 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
-use scoreboard::{api, auth::User, board::Leaderboard, router, AppState};
-use serde::{de::DeserializeOwned, Serialize};
+use scoreboard::{AppState, api, auth::User, board::Leaderboard, router};
+use serde::{Serialize, de::DeserializeOwned};
 use sqlx::PgPool;
 use std::usize;
 use tower::ServiceExt;
 
-struct RouteTest<B>{
+struct RouteTest<B> {
     method: String,
     uri: String,
-    body:Option<B>,
+    body: Option<B>,
 }
 
 impl<B> RouteTest<B>
-where B:Serialize
+where
+    B: Serialize,
 {
-    fn new() -> Self{
-        Self {  
+    fn new() -> Self {
+        Self {
             method: String::from("GET"),
             uri: String::from("/"),
             body: None,
         }
     }
 
-    fn method(mut self,method: &str) -> Self{
+    fn method(mut self, method: &str) -> Self {
         self.method = method.to_owned();
         self
     }
 
-    fn uri(mut self,uri: &str) -> Self{
+    fn uri(mut self, uri: &str) -> Self {
         self.uri = uri.to_owned();
         self
     }
 
-    fn body(mut self,body: B) -> Self{
+    fn body(mut self, body: B) -> Self {
         self.body = Some(body);
         self
     }
 
-    async fn send<R>(self,state: AppState) -> scoreboard::Result<(StatusCode,R)>
-    where R: DeserializeOwned
+    async fn send<R>(self, state: AppState) -> scoreboard::Result<(StatusCode, R)>
+    where
+        R: DeserializeOwned,
     {
         let app = router(state);
-        
+
         let mut body = Body::empty();
-        
-        if let Some(payload) = &self.body{
+
+        if let Some(payload) = &self.body {
             let json = serde_json::to_string(&payload)?;
             body = Body::from(json);
         }
-        
+
         let request = Request::builder()
             .method(self.method.as_str())
             .uri(self.uri)
             .header("Content-Type", "application/json")
             .body(body)?;
-    
+
         let response = app.oneshot(request).await.unwrap();
         let status = response.status();
 
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await?;
         let body: R = serde_json::from_slice(&bytes)?;
 
-        Ok((status,body))
+        Ok((status, body))
     }
 }
 
@@ -95,15 +97,14 @@ async fn sign_in_anonymously(pool: PgPool) -> scoreboard::Result<()> {
     Ok(())
 }
 
-
 #[sqlx::test]
 async fn create_a_leaderboard(pool: PgPool) -> scoreboard::Result<()> {
     let state = AppState::with_pool(pool).await?;
-    
+
     let mut payload = api::CreateBoardPayload::default();
     payload.name = String::from("Leaderboard123");
 
-    let (status,leaderboard) = RouteTest::new()
+    let (status, leaderboard) = RouteTest::new()
         .body(payload)
         .method("POST")
         .uri("/api/v1/leaderboard")
@@ -111,13 +112,13 @@ async fn create_a_leaderboard(pool: PgPool) -> scoreboard::Result<()> {
         .await?;
 
     assert_eq!(status, StatusCode::CREATED);
-    
+
     let new_board: Leaderboard = sqlx::query_as("SELECT * FROM leaderboards WHERE id = $1")
         .bind(leaderboard.id)
         .fetch_one(state.pool())
         .await?;
 
-    assert_eq!(new_board.name,"Leaderboard123");
+    assert_eq!(new_board.name, "Leaderboard123");
 
     Ok(())
 }
