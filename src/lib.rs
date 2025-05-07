@@ -163,6 +163,7 @@ pub fn router(state: AppState) -> Router {
 }
 
 pub async fn main() -> crate::Result<()> {
+    dotenv::dotenv();
     let state = AppState::new().await?;
     let app = router(state);
 
