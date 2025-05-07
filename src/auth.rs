@@ -26,6 +26,12 @@ pub async fn create_anon_user(pool: &PgPool) -> crate::Result<User> {
     Ok(user)
 }
 
+/// Create a random url safe string of length `n` bytes.
+pub fn gen_random_string(n: usize) -> String{
+    let bytes: Vec<u8> = vec![rand::random();n];
+    URL_SAFE.encode(bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
