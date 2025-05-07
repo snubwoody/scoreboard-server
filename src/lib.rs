@@ -6,103 +6,18 @@ mod error;
 pub mod ws;
 use axum::{
     Router,
-    extract::{
-        State, WebSocketUpgrade,
-        ws::{Message, WebSocket},
-    },
-    response::Response,
     routing::{any, get, post},
 };
 use db::{DbClient, ScoreBoard};
 pub use error::{ClientError, ClientErrorKind, Error, Result};
-use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, postgres::PgPoolOptions};
+use ws::ConnectionPool;
 use std::env;
-use uuid::Uuid;
 
-/// All the message types that can be sent over the web socket
-/// connection
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "method", content = "body")]
-#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
-pub enum ClientMessage {
-    AddMember { name: String },
-    DeleteMember { name: String },
-    UpdateScore { name: String, score: u64 },
-    CreateScoreBoard,
-    GetScoreBoard { id: Uuid },
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "method", content = "body")]
-#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
-pub enum ClientResponse {
-    CreateScoreBoard { id: Uuid },
-    GetScoreBoard { scoreboard: ScoreBoard },
-}
-
-async fn _handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> Response {
-    ws.on_upgrade(async |socket| {
-        match _handle_socket(socket, state).await {
-            Ok(_) => {}
-            Err(_) => {} // FIXME
-        };
-    })
-}
-
-async fn _handle_socket(mut socket: WebSocket, mut state: AppState) -> crate::Result<()> {
-    // let (sender,receiver) =  socket.split();
-    while let Some(msg) = socket.recv().await {
-        if let Message::Text(text) = msg? {
-            match serde_json::from_str::<ClientMessage>(&text) {
-                Ok(message) => {
-                    let response = handle_message(message, &mut state).await?;
-                    let message = serde_json::to_string(&response)?;
-
-                    socket.send(Message::Text(message.into())).await?;
-                }
-                Err(err) => {
-                    dbg!(err);
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-pub async fn handle_message(
-    message: ClientMessage,
-    state: &mut AppState,
-) -> Result<ClientResponse> {
-    let redis = state.client();
-
-    match message {
-        ClientMessage::CreateScoreBoard => {
-            let board = ScoreBoard::new();
-            let id = board.id();
-
-            redis.set_scoreboard(board).await?;
-            let response = ClientResponse::CreateScoreBoard { id };
-
-            Ok(response)
-        }
-        ClientMessage::GetScoreBoard { id } => match redis.get_scoreboard(&id).await? {
-            Some(scoreboard) => {
-                let response = ClientResponse::GetScoreBoard { scoreboard };
-                Ok(response)
-            }
-            None => {
-                let error = ClientError::not_found("Scoreboard not found");
-                Err(error.into())
-            }
-        },
-        _ => Err(Error::UnsupportedMethod),
-    }
-}
 
 #[derive(Clone)]
 pub struct AppState {
+    conn_pool: ConnectionPool,
     client: DbClient,
     pool: PgPool,
 }
@@ -119,6 +34,7 @@ impl AppState {
         Ok(Self {
             client,
             pool,
+            conn_pool: ConnectionPool::new()
         })
     }
 
@@ -128,6 +44,7 @@ impl AppState {
         Ok(Self {
             client,
             pool,
+            conn_pool: ConnectionPool::new()
         })
     }
 
@@ -139,6 +56,11 @@ impl AppState {
     /// Get a reference to the database pool
     pub fn pool(&self) -> &PgPool {
         &self.pool
+    }
+
+    /// Get a reference to the connection pool
+    pub fn conn_pool(&mut self) -> &mut ConnectionPool {
+        &mut self.conn_pool
     }
 }
 

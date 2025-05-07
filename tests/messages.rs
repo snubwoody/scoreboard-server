@@ -1,9 +1,9 @@
-use scoreboard::{AppState, ClientMessage, ClientResponse, handle_message};
+use scoreboard::{AppState, ws::{ClientMessage, ClientResponse, handle_message}};
 use sqlx::PgPool;
 
 #[sqlx::test]
 async fn create_scoreboard(pool: PgPool) -> scoreboard::Result<()> {
-    let mut state = AppState::new().await?;
+    let mut state = AppState::with_pool(pool).await?;
     let message = ClientMessage::CreateScoreBoard;
     let response = handle_message(message, &mut state).await?;
 
