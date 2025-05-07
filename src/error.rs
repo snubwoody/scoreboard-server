@@ -24,7 +24,10 @@ pub enum Error {
     AxumHttpError(#[from] axum::http::Error),
     #[error(transparent)]
     SqlxError(#[from] sqlx::Error),
+    #[error(transparent)]
+    TungsteniteError(#[from] tokio_tungstenite::tungstenite::Error),
 }
+
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClientError {

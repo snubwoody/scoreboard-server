@@ -1,8 +1,9 @@
-mod api;
+mod error;
+pub mod api;
 pub mod auth;
 pub mod board;
+pub mod ws;
 pub mod db;
-mod error;
 use axum::{
     Router,
     extract::{
@@ -14,14 +15,16 @@ use axum::{
 };
 use db::{DbClient, ScoreBoard};
 pub use error::{ClientError, ClientErrorKind, Error, Result};
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, postgres::PgPoolOptions};
+use ws::ConnectionGroup;
 use std::env;
 use uuid::Uuid;
 
 /// All the message types that can be sent over the web socket
 /// connection
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize,Clone)]
 #[serde(tag = "method", content = "body")]
 #[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum ClientMessage {
@@ -32,7 +35,7 @@ pub enum ClientMessage {
     GetScoreBoard { id: Uuid },
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize,Clone)]
 #[serde(tag = "method", content = "body")]
 #[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum ClientResponse {
@@ -50,6 +53,7 @@ async fn handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> Respons
 }
 
 async fn handle_socket(mut socket: WebSocket, mut state: AppState) -> crate::Result<()> {
+    // let (sender,receiver) =  socket.split();
     while let Some(msg) = socket.recv().await {
         if let Message::Text(text) = msg? {
             match serde_json::from_str::<ClientMessage>(&text) {
@@ -102,6 +106,7 @@ pub async fn handle_message(
 #[derive(Clone)]
 pub struct AppState {
     client: DbClient,
+    connections: ConnectionGroup,
     pool: PgPool,
 }
 
@@ -114,13 +119,23 @@ impl AppState {
             .connect(&database_url)
             .await?;
 
-        Ok(Self { client, pool })
+
+
+        Ok(Self { 
+            client, 
+            pool,
+            connections: ConnectionGroup::new() 
+        })
     }
 
     pub async fn with_pool(pool: PgPool) -> crate::Result<Self> {
         let client = DbClient::new().await?;
 
-        Ok(Self { client, pool })
+        Ok(Self { 
+            client, 
+            pool,
+            connections: ConnectionGroup::new() 
+        })
     }
 
     /// Get a reference to the client
@@ -132,13 +147,20 @@ impl AppState {
     pub fn pool(&self) -> &PgPool {
         &self.pool
     }
+
+    /// Get a reference to the connection group
+    pub fn conn_group(&mut self) -> &mut ConnectionGroup {
+        &mut self.connections
+    }
 }
 
 pub fn router(state: AppState) -> Router {
-    let api = Router::new().route("/auth/sign-up/anonymous", post(api::anon_sign_up));
+    let api = Router::new()
+        .route("/auth/sign-up/anonymous", post(api::anon_sign_up))
+        .route("/leaderboard", post(api::create_board));
 
     Router::new()
-        .route("/ws", any(handler))
+        .route("/ws", any(ws::handler))
         .nest("/api/v1", api)
         .with_state(state)
 }

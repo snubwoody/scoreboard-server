@@ -2,7 +2,7 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
-use scoreboard::{AppState, auth::User, router};
+use scoreboard::{api, auth::User, board::Leaderboard, router, AppState};
 use sqlx::PgPool;
 use std::usize;
 use tower::ServiceExt;
@@ -30,6 +30,39 @@ async fn sign_in_anonymously(pool: PgPool) -> scoreboard::Result<()> {
         .await?;
 
     assert!(new_user.is_anonymous);
+
+    Ok(())
+}
+
+#[sqlx::test]
+async fn create_a_leaderboard(pool: PgPool) -> scoreboard::Result<()> {
+    let state = AppState::with_pool(pool).await?;
+    let app = router(state.clone());
+
+    let mut payload = api::CreateBoardPayload::default();
+    payload.name = String::from("Leaderboard123");
+    
+    let json = serde_json::to_string(&payload)?;
+    let body = Body::from(json);
+    
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/leaderboard")
+        .header("Content-Type", "application/json")
+        .body(body)?;
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await?;
+    let leaderboard: Leaderboard = serde_json::from_slice(&bytes)?;
+
+    let new_board: Leaderboard = sqlx::query_as("SELECT * FROM leaderboards WHERE id = $1")
+        .bind(leaderboard.id)
+        .fetch_one(state.pool())
+        .await?;
+
+    assert_eq!(new_board.name,"Leaderboard123");
 
     Ok(())
 }
