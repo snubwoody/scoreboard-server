@@ -1,16 +1,17 @@
-use std::usize;
-use axum::{body::Body, http::{Request, StatusCode}};
-use scoreboard::{
-    auth::User, router, AppState 
+use axum::{
+    body::Body,
+    http::{Request, StatusCode},
 };
+use scoreboard::{AppState, auth::User, router};
 use sqlx::PgPool;
+use std::usize;
 use tower::ServiceExt;
 
 #[sqlx::test]
-async fn sign_in_anonymously(pool: PgPool) -> scoreboard::Result<()>{
+async fn sign_in_anonymously(pool: PgPool) -> scoreboard::Result<()> {
     let state = AppState::with_pool(pool).await?;
     let app = router(state.clone());
-    
+
     let request = Request::builder()
         .method("POST")
         .uri("/api/v1/auth/sign-up/anonymous")
@@ -18,7 +19,7 @@ async fn sign_in_anonymously(pool: PgPool) -> scoreboard::Result<()>{
         .body(Body::empty())?;
 
     let response = app.oneshot(request).await.unwrap();
-    assert_eq!(response.status(),StatusCode::CREATED);
+    assert_eq!(response.status(), StatusCode::CREATED);
 
     let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await?;
     let user: User = serde_json::from_slice(&bytes)?;
