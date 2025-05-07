@@ -2,6 +2,7 @@ pub mod db;
 mod error;
 mod auth;
 mod api;
+pub mod board;
 use std::env;
 use axum::{
     extract::{
@@ -143,9 +144,9 @@ impl AppState {
 
 pub fn router(state: AppState) -> Router{
     let api = Router::new()
-    .route("/auth/sign-up", post(api::sign_up))
-    .route("/auth/sign-in", post(api::sign_in))
-    .route("/auth/log-out", get(api::log_out));
+        .route("/auth/sign-up", post(api::sign_up))
+        .route("/auth/sign-in", post(api::sign_in))
+        .route("/auth/log-out", get(api::log_out));
 
     Router::new()
         .route("/ws", any(handler))
