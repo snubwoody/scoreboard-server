@@ -1,59 +1,61 @@
+pub mod api;
+pub mod auth;
+pub mod board;
 pub mod db;
 mod error;
-mod auth;
-mod api;
-use std::env;
+pub mod ws;
 use axum::{
+    Router,
     extract::{
-        ws::{Message, WebSocket}, State, WebSocketUpgrade
-    }, response::Response, routing::{any, get, post}, Router
+        State, WebSocketUpgrade,
+        ws::{Message, WebSocket},
+    },
+    response::Response,
+    routing::{any, get, post},
 };
 use db::{DbClient, ScoreBoard};
-pub use error::{Error, Result,ClientError,ClientErrorKind};
+pub use error::{ClientError, ClientErrorKind, Error, Result};
 use serde::{Deserialize, Serialize};
-use sqlx::{postgres::PgPoolOptions, PgPool};
+use sqlx::{PgPool, postgres::PgPoolOptions};
+use std::env;
 use uuid::Uuid;
-
 
 /// All the message types that can be sent over the web socket
 /// connection
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag="method",content="body")]
-#[serde(rename_all = "camelCase",rename_all_fields="camelCase")]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "method", content = "body")]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum ClientMessage {
     AddMember { name: String },
     DeleteMember { name: String },
     UpdateScore { name: String, score: u64 },
     CreateScoreBoard,
-    GetScoreBoard{ id: Uuid },
+    GetScoreBoard { id: Uuid },
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag="method",content="body")]
-#[serde(rename_all = "camelCase",rename_all_fields="camelCase")]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "method", content = "body")]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum ClientResponse {
-    CreateScoreBoard{
-        id: Uuid
-    },
-    GetScoreBoard{
-        scoreboard: ScoreBoard
-    },
+    CreateScoreBoard { id: Uuid },
+    GetScoreBoard { scoreboard: ScoreBoard },
 }
 
-async fn handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> Response {
+async fn _handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> Response {
     ws.on_upgrade(async |socket| {
-        match handle_socket(socket, state).await {
+        match _handle_socket(socket, state).await {
             Ok(_) => {}
-            Err(err) => {} // FIXME
+            Err(_) => {} // FIXME
         };
     })
 }
 
-async fn handle_socket(mut socket: WebSocket, mut state: AppState) -> crate::Result<()> {
+async fn _handle_socket(mut socket: WebSocket, mut state: AppState) -> crate::Result<()> {
+    // let (sender,receiver) =  socket.split();
     while let Some(msg) = socket.recv().await {
         if let Message::Text(text) = msg? {
             match serde_json::from_str::<ClientMessage>(&text) {
-                Ok(message) => {   
+                Ok(message) => {
                     let response = handle_message(message, &mut state).await?;
                     let message = serde_json::to_string(&response)?;
 
@@ -71,44 +73,38 @@ async fn handle_socket(mut socket: WebSocket, mut state: AppState) -> crate::Res
 
 pub async fn handle_message(
     message: ClientMessage,
-    state: &mut AppState
-) -> Result<ClientResponse>{
+    state: &mut AppState,
+) -> Result<ClientResponse> {
     let redis = state.client();
 
     match message {
-        ClientMessage::CreateScoreBoard =>{
+        ClientMessage::CreateScoreBoard => {
             let board = ScoreBoard::new();
             let id = board.id();
 
             redis.set_scoreboard(board).await?;
             let response = ClientResponse::CreateScoreBoard { id };
-            
+
             Ok(response)
-        },
-        ClientMessage::GetScoreBoard { id } =>{
-            match redis.get_scoreboard(&id).await? {
-                Some(scoreboard) => {
-                    let response = ClientResponse::GetScoreBoard { scoreboard };
-                    Ok(response)
-                }
-                None => {
-                    let error = ClientError::not_found("Scoreboard not found");
-                    Err(error.into())
-                }
+        }
+        ClientMessage::GetScoreBoard { id } => match redis.get_scoreboard(&id).await? {
+            Some(scoreboard) => {
+                let response = ClientResponse::GetScoreBoard { scoreboard };
+                Ok(response)
             }
-
-        }
-        _ => {
-
-            Err(Error::UnsupportedMethod)
-        }
+            None => {
+                let error = ClientError::not_found("Scoreboard not found");
+                Err(error.into())
+            }
+        },
+        _ => Err(Error::UnsupportedMethod),
     }
 }
 
 #[derive(Clone)]
 pub struct AppState {
     client: DbClient,
-    pool: PgPool
+    pool: PgPool,
 }
 
 impl AppState {
@@ -120,13 +116,19 @@ impl AppState {
             .connect(&database_url)
             .await?;
 
-        Ok(Self { client,pool })
+        Ok(Self {
+            client,
+            pool,
+        })
     }
 
     pub async fn with_pool(pool: PgPool) -> crate::Result<Self> {
         let client = DbClient::new().await?;
 
-        Ok(Self { client,pool })
+        Ok(Self {
+            client,
+            pool,
+        })
     }
 
     /// Get a reference to the client
@@ -140,22 +142,20 @@ impl AppState {
     }
 }
 
-
-pub fn router(state: AppState) -> Router{
+pub fn router(state: AppState) -> Router {
     let api = Router::new()
-    .route("/auth/sign-up", post(api::sign_up))
-    .route("/auth/sign-in", post(api::sign_in))
-    .route("/auth/log-out", get(api::log_out));
+        .route("/auth/sign-up/anonymous", post(api::anon_sign_up))
+        .route("/leaderboard", post(api::create_board))
+        .route("/leaderboards", get(api::get_leaderboards));
 
     Router::new()
-        .route("/ws", any(handler))
+        .route("/ws", any(ws::handler))
         .nest("/api/v1", api)
         .with_state(state)
 }
 
-
-
 pub async fn main() -> crate::Result<()> {
+    let _ = dotenv::dotenv();
     let state = AppState::new().await?;
     let app = router(state);
 
@@ -165,14 +165,4 @@ pub async fn main() -> crate::Result<()> {
     axum::serve(listener, app).await.unwrap();
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn set_user() -> crate::Result<()> {
-        Ok(())
-    }
 }

@@ -3,11 +3,16 @@ use redis_macros::{FromRedisValue, ToRedisArgs};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[derive(FromRedisValue,ToRedisArgs)]
+#[derive(Debug, Serialize, Deserialize, Clone, FromRedisValue, ToRedisArgs)]
 pub struct ScoreBoard {
     id: Uuid,
     users: Vec<User>,
+}
+
+impl Default for ScoreBoard {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ScoreBoard {
@@ -17,7 +22,7 @@ impl ScoreBoard {
         Self { id, users: vec![] }
     }
 
-    pub fn id(&self) -> Uuid{
+    pub fn id(&self) -> Uuid {
         self.id
     }
 }
@@ -89,7 +94,7 @@ impl DbClient {
     }
     // TODO make generic get and set methods
 
-    pub async fn set_scoreboard(&mut self,scoreboard: ScoreBoard) -> crate::Result<()> {
+    pub async fn set_scoreboard(&mut self, scoreboard: ScoreBoard) -> crate::Result<()> {
         let _: () = self
             .connection
             .set(format!("scoreboard:{}", scoreboard.id), scoreboard)
@@ -98,11 +103,9 @@ impl DbClient {
         Ok(())
     }
 
-    pub async fn get_scoreboard(&mut self,id: &Uuid) -> crate::Result<Option<ScoreBoard>> {
-        let response: Result<ScoreBoard, redis::RedisError> = self
-            .connection
-            .get(format!("scoreboard:{}", id))
-            .await;
+    pub async fn get_scoreboard(&mut self, id: &Uuid) -> crate::Result<Option<ScoreBoard>> {
+        let response: Result<ScoreBoard, redis::RedisError> =
+            self.connection.get(format!("scoreboard:{}", id)).await;
 
         match response {
             Ok(board) => Ok(Some(board)),
