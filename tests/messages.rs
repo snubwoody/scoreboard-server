@@ -1,6 +1,5 @@
-use scoreboard::{AppState, ClientErrorKind, ClientMessage, ClientResponse, handle_message};
+use scoreboard::{AppState, ClientMessage, ClientResponse, handle_message};
 use sqlx::PgPool;
-use uuid::Uuid;
 
 #[sqlx::test]
 async fn create_scoreboard(pool: PgPool) -> scoreboard::Result<()> {

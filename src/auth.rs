@@ -1,8 +1,7 @@
 use base64::engine::{Engine, general_purpose::URL_SAFE};
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, prelude::FromRow};
-use std::time;
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Default)]
@@ -39,7 +38,7 @@ mod tests {
     #[sqlx::test(migrations = "./migrations")]
     async fn new_anon_user(pool: PgPool) -> crate::Result<()> {
         let user = create_anon_user(&pool).await?;
-        assert_eq!(user.is_anonymous, true);
+        assert!(user.is_anonymous);
 
         Ok(())
     }

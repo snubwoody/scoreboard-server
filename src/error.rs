@@ -8,7 +8,6 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("The method sent is not supported")]
-    #[deprecated]
     UnsupportedMethod,
 
     #[error("transparent")]

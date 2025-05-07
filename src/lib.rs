@@ -15,12 +15,10 @@ use axum::{
 };
 use db::{DbClient, ScoreBoard};
 pub use error::{ClientError, ClientErrorKind, Error, Result};
-use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::env;
 use uuid::Uuid;
-use ws::ConnectionGroup;
 
 /// All the message types that can be sent over the web socket
 /// connection
@@ -43,16 +41,16 @@ pub enum ClientResponse {
     GetScoreBoard { scoreboard: ScoreBoard },
 }
 
-async fn handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> Response {
+async fn _handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> Response {
     ws.on_upgrade(async |socket| {
-        match handle_socket(socket, state).await {
+        match _handle_socket(socket, state).await {
             Ok(_) => {}
-            Err(err) => {} // FIXME
+            Err(_) => {} // FIXME
         };
     })
 }
 
-async fn handle_socket(mut socket: WebSocket, mut state: AppState) -> crate::Result<()> {
+async fn _handle_socket(mut socket: WebSocket, mut state: AppState) -> crate::Result<()> {
     // let (sender,receiver) =  socket.split();
     while let Some(msg) = socket.recv().await {
         if let Message::Text(text) = msg? {
@@ -106,7 +104,6 @@ pub async fn handle_message(
 #[derive(Clone)]
 pub struct AppState {
     client: DbClient,
-    connections: ConnectionGroup,
     pool: PgPool,
 }
 
@@ -122,7 +119,6 @@ impl AppState {
         Ok(Self {
             client,
             pool,
-            connections: ConnectionGroup::new(),
         })
     }
 
@@ -132,7 +128,6 @@ impl AppState {
         Ok(Self {
             client,
             pool,
-            connections: ConnectionGroup::new(),
         })
     }
 
@@ -144,11 +139,6 @@ impl AppState {
     /// Get a reference to the database pool
     pub fn pool(&self) -> &PgPool {
         &self.pool
-    }
-
-    /// Get a reference to the connection group
-    pub fn conn_group(&mut self) -> &mut ConnectionGroup {
-        &mut self.connections
     }
 }
 
@@ -165,7 +155,7 @@ pub fn router(state: AppState) -> Router {
 }
 
 pub async fn main() -> crate::Result<()> {
-    dotenv::dotenv();
+    let _ = dotenv::dotenv();
     let state = AppState::new().await?;
     let app = router(state);
 

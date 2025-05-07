@@ -9,6 +9,12 @@ pub struct ScoreBoard {
     users: Vec<User>,
 }
 
+impl Default for ScoreBoard {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ScoreBoard {
     pub fn new() -> Self {
         let id = Uuid::new_v4();
