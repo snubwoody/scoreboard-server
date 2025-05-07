@@ -5,13 +5,9 @@ pub mod board;
 pub mod ws;
 pub mod db;
 use axum::{
-    Router,
     extract::{
-        State, WebSocketUpgrade,
-        ws::{Message, WebSocket},
-    },
-    response::Response,
-    routing::{any, post},
+        ws::{Message, WebSocket}, State, WebSocketUpgrade
+    }, response::Response, routing::{any, get, post}, Router
 };
 use db::{DbClient, ScoreBoard};
 pub use error::{ClientError, ClientErrorKind, Error, Result};
@@ -157,7 +153,8 @@ impl AppState {
 pub fn router(state: AppState) -> Router {
     let api = Router::new()
         .route("/auth/sign-up/anonymous", post(api::anon_sign_up))
-        .route("/leaderboard", post(api::create_board));
+        .route("/leaderboard", post(api::create_board))
+        .route("/leaderboards", get(api::get_leaderboards));
 
     Router::new()
         .route("/ws", any(ws::handler))
