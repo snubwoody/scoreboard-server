@@ -1,13 +1,30 @@
+use axum::{extract::State, http::StatusCode, Json};
+use crate::{auth::{self, User}, AppState};
 
 
-pub async fn sign_up() -> &'static str{
-    ""
+
+/// Sign up as an anonymous user
+pub async fn anon_sign_up(
+    State(state): State<AppState>
+) -> crate::Result<(StatusCode,Json<User>)>
+{
+    let user = auth::create_anon_user(&state.pool).await?;
+    let response = (StatusCode::CREATED,Json(user));
+
+    Ok(response)
 }
 
-pub async fn sign_in(){
+#[cfg(test)]
+mod tests{
+    use sqlx::PgPool;
+    use super::*;
 
-}
-
-pub async fn log_out(){
-
+    #[sqlx::test(migrations="./migrations")]
+    async fn sign_up_anonymously(pool: PgPool) -> crate::Result<()>{
+        let state = AppState::with_pool(pool).await?;
+        let (status,_) = anon_sign_up(State(state)).await?;
+        
+        assert_eq!(status,StatusCode::CREATED);
+        Ok(())
+    }
 }

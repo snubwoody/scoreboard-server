@@ -1,4 +1,6 @@
+use axum::{http::StatusCode, response::IntoResponse, Json};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -17,7 +19,9 @@ pub enum Error {
     #[error(transparent)]
     SerdeJsonError(#[from] serde_json::Error),
     #[error(transparent)]
-    AxumJsonError(#[from] axum::Error),
+    AxumError(#[from] axum::Error),
+    #[error(transparent)]
+    AxumHttpError(#[from] axum::http::Error),
     #[error(transparent)]
     SqlxError(#[from] sqlx::Error),
 }
@@ -59,5 +63,14 @@ impl std::error::Error for ClientError{}
 impl std::fmt::Display for ClientError{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f,"{}",self.message)
+    }
+}
+
+
+impl IntoResponse for Error{
+    fn into_response(self) -> axum::response::Response {
+        let body = Json(json!({"error":"An unknown error occured"}));
+
+        (StatusCode::INTERNAL_SERVER_ERROR,body).into_response()
     }
 }

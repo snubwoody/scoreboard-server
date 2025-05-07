@@ -1419,6 +1419,7 @@ dependencies = [
  "chrono",
  "dotenv",
  "futures-util",
+ "hyper",
  "rand 0.9.1",
  "redis 0.30.0",
  "redis-macros",
@@ -1427,6 +1428,7 @@ dependencies = [
  "sqlx",
  "thiserror",
  "tokio",
+ "tower",
  "uuid",
 ]
 

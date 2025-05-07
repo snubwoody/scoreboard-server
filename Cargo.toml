@@ -17,6 +17,8 @@ chrono = {version = "0.4.41",features = ["serde"]}
 base64 = "0.22.1"
 rand = "0.9.1"
 dotenv = "0.15.0"
+tower = "0.5.2"
+hyper = "1.6.0"
 
 [dependencies.sqlx]
 version = "0.8.5"

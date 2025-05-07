@@ -1,13 +1,16 @@
-pub mod db;
-mod error;
-mod auth;
 mod api;
+mod error;
+pub mod db;
+pub mod auth;
 pub mod board;
 use std::env;
 use axum::{
     extract::{
         ws::{Message, WebSocket}, State, WebSocketUpgrade
-    }, response::Response, routing::{any, get, post}, Router
+    }, 
+    response::Response, 
+    routing::{any, post}, 
+    Router
 };
 use db::{DbClient, ScoreBoard};
 pub use error::{Error, Result,ClientError,ClientErrorKind};
@@ -141,20 +144,15 @@ impl AppState {
     }
 }
 
-
 pub fn router(state: AppState) -> Router{
     let api = Router::new()
-        .route("/auth/sign-up", post(api::sign_up))
-        .route("/auth/sign-in", post(api::sign_in))
-        .route("/auth/log-out", get(api::log_out));
+        .route("/auth/sign-up/anonymous", post(api::anon_sign_up));
 
     Router::new()
         .route("/ws", any(handler))
         .nest("/api/v1", api)
         .with_state(state)
 }
-
-
 
 pub async fn main() -> crate::Result<()> {
     let state = AppState::new().await?;
@@ -166,14 +164,4 @@ pub async fn main() -> crate::Result<()> {
     axum::serve(listener, app).await.unwrap();
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn set_user() -> crate::Result<()> {
-        Ok(())
-    }
 }
